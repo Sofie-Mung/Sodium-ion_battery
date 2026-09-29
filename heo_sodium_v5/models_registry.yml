@@ -1,0 +1,175 @@
+# models_registry.yml — MODEL_BENCHMARK_SPEC 관문 0 레지스트리 (조사 2026-09-17)
+# status: verified   = v3/v4 프로덕션 또는 표준 배포로 검증됨
+#         unverified = 어댑터 작성됨, 체크포인트명/화폐/호출부는 팟 첫 실행에서 확인 필요
+#         blocked    = 공개 ASE 인터페이스 미확인 — 실행 불가로 끝날 수 있음 (§10-6: 결과 표에 남김)
+# currency 판정: 마무리(마지막 fine-tune) 데이터가 MPtrj/sAlex(PBE+U) 계열이면 MP.
+# adapter 키는 bench_models.ADAPTERS와 1:1. isolated: true = 자체 torch/python venv 필요.
+
+- id: M01
+  adapter: orb_mpa
+  name: ORB-v3 conservative mpa
+  checkpoint: orb_v3_conservative_inf_mpa (orb_models.forcefield.pretrained, 자동 다운로드)
+  lineage: 비등변 (graph attention)
+  currency: MP (MPtrj + sAlex) — 프로덕션과 동일 은행
+  conservative: true
+  license: Apache-2.0
+  pip: [orb-models]
+  isolated: false
+  status: verified
+  role: 기준선 (현행 주모델)
+
+- id: M02
+  adapter: orb_omat
+  name: ORB-v3 conservative omat
+  checkpoint: orb_v3_conservative_inf_omat
+  lineage: 비등변 (M01과 동일 아키텍처)
+  currency: OMat24 (PBE, +U 없음) → 관문 0에서 대조군 확정
+  conservative: true
+  license: Apache-2.0
+  pip: [orb-models]
+  isolated: false
+  status: verified
+  role: 화폐 대조군 — "화폐 불일치가 dE에 주는 영향"을 답하는 참가자
+
+- id: M03
+  adapter: mace_mpa
+  name: MACE-MPA-0 (medium)
+  checkpoint: medium-mpa-0 (mace_mp 자동 다운로드)
+  lineage: 등변 (e3nn)
+  currency: MP (MPtrj + sAlex)
+  conservative: true
+  license: MIT (코드) / 체크포인트 카드 재확인
+  pip: [mace-torch]
+  isolated: false
+  status: verified
+  role: 현행 대조모델
+
+- id: M04
+  adapter: sevennet_mf_ompa
+  name: SevenNet-MF-ompa (MPA 헤드)
+  checkpoint: 7net-mf-ompa, modal="mpa" — omat 헤드는 화폐 다름, modal 인자 필수
+  lineage: 등변 (NequIP 계열, 다중충실도)
+  currency: MP (mpa 헤드 = MPtrj+sAlex 라벨)
+  conservative: true
+  license: GPL-3.0 (연구·논문 사용 무관)
+  pip: [sevenn]
+  isolated: false
+  status: unverified   # modal 키워드 버전 호환 확인
+  role: 등변·다중충실도 계보
+
+- id: M05
+  adapter: esen_30m_oam
+  name: eSEN-30M-OAM
+  checkpoint: esen-30m-oam (fairchem-core v2 pretrained_mlip; HF gated 가능 → HF_TOKEN)
+  lineage: 등변, 대형 (30M)
+  currency: MP 마무리 (OMat 사전학습 → MPtrj+sAlex)
+  conservative: true   # energy-conserving 설계 — 카드 재확인
+  license: Meta FAIR 연구용 — 재배포 조건 확인
+  pip: ["fairchem-core>=2"]
+  isolated: false
+  status: unverified   # 유닛명·gated 여부
+  role: 리더보드 상위
+
+- id: M06
+  adapter: equiformer_v3_oam
+  name: EquiformerV3+DeNS-OAM
+  checkpoint: hf.co/mirror-physics/equiformer_v3 (실물 확인, F1 0.912)
+  lineage: 등변 (SE(3) graph attention transformer v3)
+  currency: MP 마무리 주장 — 카드 확인
+  conservative: unverified
+  license: 저장소 확인 (atomicarchitects/equiformer_v3)
+  pip: ["git+https://github.com/atomicarchitects/equiformer_v3#subdirectory=packages/fairchem-core"]
+  isolated: true       # py3.11 + torch 2.7.1+cu128 + PyG 스택 (README env, 5단계 pip_steps)
+  status: unverified   # 2026-09-18 업데이트: vendored fairchem-core 경로로 설치 가능 확인 (README env 재현).
+                       # ckpt는 hf.co/mirror-physics/equiformer_v3의 checkpoint/omat24-mptrj-salex_gradient.pt
+                       # (OAM 화폐 + conservative) 자동 선택. 로더 API는 팟에서 최종 확인.
+  role: 리더보드 F1 상위 — vendored fairchem 경로로 참가 시도 (실패 시 '실행 불가' 행으로 보고)
+
+- id: M07
+  adapter: mattersim
+  name: MatterSim-v1 (5M)
+  checkpoint: MatterSim-v1.0.0-5M.pth (HF 자동 다운로드)
+  lineage: 등변 (M3GNet 계열 확장)
+  currency: MP 호환 주장 (자체 PBE 데이터 포함) — +U 은행 일치가 핵심 확인 항목
+  conservative: true
+  license: MIT
+  pip: [mattersim]
+  isolated: false
+  status: unverified
+  role: 별도 데이터 계보
+
+- id: M08
+  adapter: chgnet
+  name: CHGNet
+  checkpoint: 0.3.0 (기본 로드)
+  lineage: 자화 인식 (magmom 라벨 학습)
+  currency: MP (MPtrj)
+  conservative: true
+  license: BSD-3 (UC Berkeley)
+  pip: [chgnet]
+  isolated: false
+  status: verified
+  role: 자화 예측 가능한 유일 참가자
+
+- id: M09
+  adapter: equflashv2_oam
+  name: EquFlashV2-45M-OAM
+  checkpoint: Figshare (matbench 모델 페이지 'Model files') → HEO_EQUFLASH_CKPT로 경로 지정
+  lineage: 등변, Transformer-style 블록 (attention 없음), FlashTP 가속, 44.9M
+  currency: MP (MPtrj + OMat24 + sAlex) — F1 0.929 (리더보드 2위)
+  conservative: true   # gradient-based forces (모델 카드)
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["(6단계 pip_steps — 공식 requirements.txt 재현 + fairchem.core==1.10.0 --no-deps + 커밋 고정 tarball)"]
+  isolated: true       # py3.12 + torch 2.9.1+cu126 + cuequivariance 0.6.0 (공식 requirements)
+  status: unverified   # 2026-09-18 소스 확인: 진입점 = GGNN.common.calculator.UCalculator(checkpoint_path=, cpu=).
+                       # git+ 설치 금지 — flashTP 서브모듈이 삼성 내부 서버라 재귀 클론 실패 → tarball 설치.
+                       # (EquFlashV2 모델 코드는 flashTP를 import하지 않음 — 소스 확인)
+  role: 등변+속도 — 주모델 후보
+
+- id: M10
+  adapter: prophet_oame
+  name: Prophet-OAME-MBD
+  checkpoint: hf.co/kairosmaterial/prophet prophet-oame-mbd.pt (자동 다운로드)
+  lineage: 등변, 62.3M (Kairos Materials)
+  currency: MP — OMat24+ELEMENTA 사전학습 → MPtrj+sAlex 마무리 (matbench PR #397에서 확인)
+  conservative: unverified
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["prophet-mlip @ git+https://github.com/kairosmaterial/prophet.git@dcfdc0b143978652d573630f1d2a6ce09e0c610a", huggingface_hub]
+  isolated: true
+  status: unverified   # KairosCalculator 모듈 경로 후보 시도
+  role: 신규 상위
+
+- id: M11
+  adapter: tece_oam_rra
+  name: TECE-OAM-RRA-1.0
+  checkpoint: hf.co/xvzemin/tace-foundations TECE-OAM-RRA-1.0.pt (891MB, 자동 다운로드)
+  lineage: TACE 계열 (Tensor/Edge Cluster Expansion + Radial Rotary Attention)
+  currency: -oam 접미 (OMat→MPtrj+sAlex 마무리로 추정) — 카드 확인
+  conservative: unverified
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["git+https://github.com/xvzemin/tace", "openequivariance==0.6.4", huggingface_hub]
+  python: "3.13"
+  torch: "torch==2.13.*"
+  isolated: true       # 가장 무거운 환경 — 전용 venv (uv --python 3.13)
+  status: unverified
+  role: 신규 상위 (TACE 계보)
+
+- id: M12
+  adapter: pet_oam
+  name: PET-OAM (upet)
+  checkpoint: upet 패키지 pre-trained 패밀리 중 PET-OAM (HF lab-cosmo)
+  lineage: PET (Point Edge Transformer)
+  currency: OAM 마무리 (MP 계열) — PET-MAD 폴백은 PBEsol → 대조군 전용
+  conservative: unverified
+  license: lab-cosmo 저장소 확인
+  pip: [upet]
+  isolated: false
+  status: unverified   # UPETCalculator 클래스명·모델명 인자 확인
+  role: PET 계보 — κ_SRME 최저 계열, 곡률 재현 후보
+
+# ---- 파이프라인 검증 전용 (벤치마크 결과 표에 포함 금지) ----
+- id: MOCK
+  adapter: mock
+  name: mock (heo_worker.relax_mock)
+  status: verified
+  role: GPU 없는 로컬에서 배선 검사 전용

@@ -1,0 +1,30 @@
+# config.yaml - every lab-server-specific placeholder in ONE file (spec section 2 values).
+# Fill the <...> entries at pilot step P1 (RUNBOOK.md).  Calc STATE never lives here -
+# manifest.csv is the single state store (spec 8-6); this file only holds configuration.
+
+# ---- SLURM (spec 10-#6: confirm partition max walltime + node memory at P1)
+partition: 56core
+ntasks: 56
+walltime: "3-00:00:00"
+n_workers: 10               # resident workers (~24 rows/node over the 240-calc main run),
+                            # overridable per submission: ./submit.sh N
+
+# ---- VASP
+vasp_module: "<VASP_MODULE>"              # e.g. vasp/6.4.2
+vasp_cmd_std: "srun -n {ntasks} <VASP_STD_PATH>"
+vasp_cmd_gam: "srun -n {ntasks} <VASP_GAM_PATH>"
+pmg_vasp_psp_dir: "<POTCAR_DIR>"          # MP default POTCAR set (PMG_VASP_PSP_DIR)
+
+# ---- environment
+conda_env: atomate2                       # created at P1: pip install atomate2 jobflow custodian
+                                          #   pymatgen emmet-core monty ase pandas pyyaml python-pptx
+
+# ---- run policy
+kmode: std                  # global k-point mode for vasp_mode=default rows.
+                            # Flip to "gam" ONLY after the pilot gate passes
+                            # (|d(dE)| < 5 meV/f.u. AND force MAE < 0.02 eV/A, spec section 4).
+                            # E_Na is ALWAYS std + MP k-density regardless (bcc Na is a metal).
+t_est_hours: 6.0            # per-calc wall estimate; overwrite with pilot T (audit.py --pilot prints it)
+safety_margin_min: 30       # worker stops claiming when remaining walltime < t_est + margin
+max_attempts: 2             # FIZZLED twice -> status=manual, human review (spec section 6)
+max_lost: 3                 # walltime-cut/lost runs tolerated per row before manual
