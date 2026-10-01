@@ -1,0 +1,189 @@
+# models_registry.yml — MODEL_BENCHMARK_SPEC 관문 0 레지스트리 (조사 2026-09-17)
+# status: verified   = v3/v4 프로덕션 또는 표준 배포로 검증됨
+#         unverified = 어댑터 작성됨, 체크포인트명/화폐/호출부는 팟 첫 실행에서 확인 필요
+#         blocked    = 공개 ASE 인터페이스 미확인 — 실행 불가로 끝날 수 있음 (§10-6: 결과 표에 남김)
+# currency 판정: 마무리(마지막 fine-tune) 데이터가 MPtrj/sAlex(PBE+U) 계열이면 MP.
+# adapter 키는 bench_models.ADAPTERS와 1:1. isolated: true = 자체 torch/python venv 필요.
+# engine (2026-09-30): 전 모델에 torch-sim 배치 경로 추가 (bench_models.build_ts / TS_PIP).
+#   torch-sim-atomistic==0.5.2 고정 (0.6.x는 nvalchemi[torch] 경유로 torch>=2.8 요구 -> eSEN 2.4 / EqV3 2.7.1 불가).
+#   MatterSim만 자체 의존성으로 >=0.6 설치 (fire.py·cell_filters.py 알고리즘 동일 확인).
+#   네이티브: ORB(torch_sim.models.orb), MACE(torch_sim.models.mace), SevenNet(sevenn.torchsim),
+#             MatterSim(mattersim.torchsim), TECE(tace.interface.torchsim), PET(metatomic_torchsim)
+#   직접 래퍼: OCPBatchModel(M05/M06/M09 - OCPCalculator의 a2g+trainer.predict 배치),
+#             CHGNetBatchModel(M08), ProphetBatchModel(M10)
+#   스모크 8-10(배치==ASE, torch-sim 이완, 배치 타이밍) 통과 모델만 torchsim, 나머지는 ASE로 실행.
+
+- id: M01
+  adapter: orb_mpa
+  name: ORB-v3 conservative mpa
+  checkpoint: orb_v3_conservative_inf_mpa (orb_models.forcefield.pretrained, 자동 다운로드)
+  lineage: 비등변 (graph attention)
+  currency: MP (MPtrj + sAlex) — 프로덕션과 동일 은행
+  conservative: true
+  license: Apache-2.0
+  pip: ["orb-models==0.5.5"]   # 2026-09-29: py3.12 전용 venv + torch 2.8.0 cu126 (09-17엔 공유 env에서 adapter_error)
+  isolated: true
+  status: unverified   # 0.5.5 API 확인(wheel 소스), 팟 smoke 대기
+  role: 기준선 (현행 주모델)
+
+- id: M02
+  adapter: orb_omat
+  name: ORB-v3 conservative omat
+  checkpoint: orb_v3_conservative_inf_omat
+  lineage: 비등변 (M01과 동일 아키텍처)
+  currency: OMat24 (PBE+U, VASP 54 · 다른 PSP 세트 — MP2020 보정과 비호환) → 관문 0에서 대조군 확정
+  conservative: true
+  license: Apache-2.0
+  pip: ["orb-models==0.5.5"]   # M01과 같은 venv 구성
+  isolated: true
+  status: unverified
+  role: 화폐 대조군 — "화폐 불일치가 dE에 주는 영향"을 답하는 참가자
+
+- id: M03
+  adapter: mace_mpa
+  name: MACE-MPA-0 (medium)
+  checkpoint: medium-mpa-0 (mace_mp 자동 다운로드)
+  lineage: 등변 (e3nn)
+  currency: MP (MPtrj + sAlex)
+  conservative: true
+  license: MIT (코드) / 체크포인트 카드 재확인
+  pip: [mace-torch]
+  isolated: false
+  status: verified
+  role: 현행 대조모델
+
+- id: M04
+  adapter: sevennet_omni
+  name: SevenNet-Omni (MPA 헤드)   # 2026-09-29 MF-ompa에서 교체, Omni만 사용(폴백 없음)
+  checkpoint: 7net-omni, modal="mpa" — 다른 헤드(r2SCAN·omat·omol 등)는 화폐 다름, modal 인자 필수
+  lineage: 등변 (NequIP 계열, 다중태스크 — 공개 데이터셋 15개)
+  currency: MP (mpa 헤드 = PBE+U 라벨)
+  conservative: true
+  license: GPL-3.0 (연구·논문 사용 무관)
+  pip: [sevenn]
+  isolated: false
+  status: unverified   # 체크포인트 키워드(7net-omni)·modal 이름 확인
+  role: 등변·다중태스크 계보
+
+- id: M05
+  adapter: esen_30m_oam
+  name: eSEN-30M-OAM
+  checkpoint: hf.co/facebook/OMAT24 esen_30m_oam.pt — gated(수동 승인) → HF_TOKEN 필수
+  loader: fairchem-core==1.10.0 OCPCalculator(checkpoint_path, cpu=False, seed=0) — v2 레지스트리엔 없음
+  lineage: 등변, 대형 (30M)
+  currency: MP 마무리 (OMat 사전학습 → MPtrj+sAlex)
+  conservative: true   # energy-conserving 설계 — 카드 재확인
+  license: Meta FAIR 연구용 — 재배포 조건 확인
+  pip: ["torch==2.4.0 (cu121)", "fairchem-core[torch-extras]==1.10.0", "numpy<2", "scipy<1.15"]
+  isolated: true       # py3.12 (fairchem 1.10: torch~=2.4, numpy<2, py<3.13)
+  status: unverified   # HF 접근 승인 후 팟 smoke
+  role: 리더보드 상위
+
+- id: M06
+  adapter: equiformer_v3_oam
+  name: EquiformerV3+DeNS-OAM
+  checkpoint: hf.co/mirror-physics/equiformer_v3 (실물 확인, F1 0.912)
+  lineage: 등변 (SE(3) graph attention transformer v3)
+  currency: MP 마무리 주장 — 카드 확인
+  conservative: unverified
+  license: 저장소 확인 (atomicarchitects/equiformer_v3)
+  pip: ["git clone → torch 2.7.1 cu126 + PyG → conda_requirements.txt → pip install -e packages/fairchem-core"]
+  # editable 필수: setup_imports()가 심볼릭 링크로 experimental/models를 import해야 equiformer_v3가 등록됨
+  isolated: true       # py3.12 (09-30: torch-sim용, 3.11->3.12) + torch 2.7.1+cu126 + PyG 스택 (README env, pip_steps)
+  status: unverified   # 2026-09-18 업데이트: vendored fairchem-core 경로로 설치 가능 확인 (README env 재현).
+                       # ckpt는 hf.co/mirror-physics/equiformer_v3의 checkpoint/omat24-mptrj-salex_gradient.pt
+                       # (OAM 화폐 + conservative) 자동 선택. 로더 API는 팟에서 최종 확인.
+  role: 리더보드 F1 상위 — vendored fairchem 경로로 참가 시도 (실패 시 '실행 불가' 행으로 보고)
+
+- id: M07
+  adapter: mattersim
+  name: MatterSim-v1 (5M)
+  checkpoint: MatterSim-v1.0.0-5M.pth (HF 자동 다운로드)
+  lineage: 등변 (M3GNet 계열 확장)
+  currency: MP 호환 주장 (자체 PBE 데이터 포함) — +U 은행 일치가 핵심 확인 항목
+  conservative: true
+  license: MIT
+  pip: [mattersim]
+  isolated: false
+  status: unverified
+  role: 별도 데이터 계보
+
+- id: M08
+  adapter: chgnet
+  name: CHGNet
+  checkpoint: 0.3.0 (기본 로드)
+  lineage: 자화 인식 (magmom 라벨 학습)
+  currency: MP (MPtrj)
+  conservative: true
+  license: BSD-3 (UC Berkeley)
+  pip: [chgnet]
+  isolated: false
+  status: verified
+  role: 자화 예측 가능한 유일 참가자
+
+- id: M09
+  adapter: equflashv2_oam
+  name: EquFlashV2-45M-OAM
+  checkpoint: https://api.figshare.com/v2/file/download/65435007 (equflashv2_oam.pt, 898,917,921 B) 자동 다운로드
+              # figshare.com/ndownloader 주소는 WAF 챌린지(HTML)를 돌려줌 — 09-17 실패 원인 추정
+  lineage: 등변, Transformer-style 블록 (attention 없음), FlashTP 가속, 44.9M
+  currency: MP (MPtrj + OMat24 + sAlex) — F1 0.929 (리더보드 2위)
+  conservative: true   # gradient-based forces (모델 카드)
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["(6단계 pip_steps — 공식 requirements.txt 재현 + fairchem.core==1.10.0 --no-deps + 커밋 고정 tarball)"]
+  isolated: true       # py3.12 + torch 2.9.1+cu126 + cuequivariance 0.6.0 (공식 requirements)
+  status: unverified   # 2026-09-18 소스 확인: 진입점 = GGNN.common.calculator.UCalculator(checkpoint_path=, cpu=).
+                       # git+ 설치 금지 — flashTP 서브모듈이 삼성 내부 서버라 재귀 클론 실패 → tarball 설치.
+                       # (EquFlashV2 모델 코드는 flashTP를 import하지 않음 — 소스 확인)
+  role: 등변+속도 — 주모델 후보
+
+- id: M10
+  adapter: prophet_oame
+  name: Prophet-OAME-MBD
+  checkpoint: hf.co/kairosmaterial/prophet prophet-oame-mbd.pt (자동 다운로드)
+  lineage: 등변, 62.3M (Kairos Materials)
+  currency: MP — OMat24+ELEMENTA 사전학습 → MPtrj+sAlex 마무리 (matbench PR #397에서 확인)
+  conservative: unverified
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["prophet-mlip @ git+https://github.com/kairosmaterial/prophet.git@dcfdc0b143978652d573630f1d2a6ce09e0c610a", huggingface_hub]
+  isolated: true       # py3.12 + torch 2.8.0 cu126 (prophet: py>=3.11, torch>=2.7, ase>=3.29)
+  loader: from prophet import KairosCalculator; KairosCalculator(model_path, use_kernel=False)
+          # 기본 use_kernel=True는 openequivariance JIT(nvcc) 필요 — HEO_PROPHET_KERNEL=1로만 켬
+  status: unverified
+  role: 신규 상위
+
+- id: M11
+  adapter: tece_oam_rra
+  name: TECE-OAM-RRA-1.0
+  checkpoint: hf.co/xvzemin/tace-foundations TECE-OAM-RRA-1.0.pt (891MB, 자동 다운로드)
+  lineage: TACE 계열 (Tensor/Edge Cluster Expansion + Radial Rotary Attention)
+  currency: -oam 접미 (OMat→MPtrj+sAlex 마무리로 추정) — 카드 확인
+  conservative: unverified
+  license: MIT (코드) / CC-BY-4.0 (가중치)
+  pip: ["tace==0.2.2", huggingface_hub]   # OEQ/cuEq 가속은 opt-in — 참조 e3nn 경로는 nvcc 불필요
+  python: "3.12"       # py3.13/torch 2.13은 matbench 테스트 핀일 뿐 요구사항 아님 (py>=3.9, torch>=2.4)
+  loader: tace.interface.ase.TACEAseCalc(model=<ckpt>, device, dtype="float32")
+  isolated: true       # 09-17 NO OUTPUT = py3.13 venv에 pandas 없어 러너가 import에서 사망
+  status: unverified
+  role: 신규 상위 (TACE 계보)
+
+- id: M12
+  adapter: pet_oam
+  name: PET-OAM (upet)
+  checkpoint: pet-oam-l (hf.co/lab-cosmo/upet models/pet-oam-l-v0.1.0.ckpt, 비gated)
+  loader: upet.ase.UPETCalculator(model="pet-oam-l", device=) — PET-MAD(PBEsol) 폴백 제거
+  lineage: PET (Point Edge Transformer)
+  currency: MP 마무리 (OMat 사전학습 → sAlex+MPtrj)
+  conservative: unverified
+  license: lab-cosmo 저장소 확인
+  pip: ["upet==0.3.1"]
+  isolated: true       # py3.12 + torch 2.8.0 cu126 (upet 0.3: py>=3.11 — 3.10이면 0.1.0으로 조용히 떨어짐)
+  status: unverified
+  role: PET 계보 — κ_SRME 최저 계열, 곡률 재현 후보
+
+# ---- 파이프라인 검증 전용 (벤치마크 결과 표에 포함 금지) ----
+- id: MOCK
+  adapter: mock
+  name: mock (heo_worker.relax_mock)
+  status: verified
+  role: GPU 없는 로컬에서 배선 검사 전용
